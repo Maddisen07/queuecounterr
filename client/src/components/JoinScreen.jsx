@@ -73,12 +73,26 @@ export function JoinScreen() {
   const handleJoin = async (e) => {
     e.preventDefault();
     setError(null);
+
+    const trimmedName = customerName.trim();
+    const trimmedNote = note.trim();
+
+    if (!trimmedName) {
+      setError('Please enter your name.');
+      return;
+    }
+
+    if (!trimmedNote) {
+      setError('Please provide or select a service reason.');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
       const result = await api.joinQueue({
-        customerName: customerName.trim(),
-        note: note.trim()
+        customerName: trimmedName,
+        note: trimmedNote
       });
       setSavedTokenId(result.token._id);
       setTokenData(result);
@@ -190,7 +204,9 @@ export function JoinScreen() {
             <form onSubmit={handleJoin} noValidate>
               <div className="form-group">
                 <label htmlFor="customerName" className="form-label">
-                  <span>Your Name (optional)</span>
+                  <span>
+                    Your Name <span style={{ color: 'var(--error-red)' }}>*</span>
+                  </span>
                   <span className="form-char-count">{customerName.length}/60</span>
                 </label>
                 <input
@@ -203,12 +219,15 @@ export function JoinScreen() {
                   onChange={(e) => setCustomerName(e.target.value)}
                   disabled={submitting}
                   autoComplete="name"
+                  required
                 />
               </div>
 
               {/* Quick Reason Chips */}
               <div>
-                <span className="quick-reasons-label">Quick Select Reason:</span>
+                <span className="quick-reasons-label">
+                  Quick Select Reason <span style={{ color: 'var(--error-red)' }}>*</span>:
+                </span>
                 <div className="quick-reasons-chips">
                   {REASON_PRESETS.map((preset) => {
                     const isSelected = note === preset;
@@ -229,7 +248,9 @@ export function JoinScreen() {
 
               <div className="form-group">
                 <label htmlFor="note" className="form-label">
-                  <span>Custom Service Note (optional)</span>
+                  <span>
+                    Service Reason <span style={{ color: 'var(--error-red)' }}>*</span>
+                  </span>
                   <span className="form-char-count">{note.length}/120</span>
                 </label>
                 <textarea
@@ -241,6 +262,7 @@ export function JoinScreen() {
                   maxLength={120}
                   onChange={(e) => setNote(e.target.value)}
                   disabled={submitting}
+                  required
                 />
               </div>
 
@@ -248,7 +270,7 @@ export function JoinScreen() {
                 type="submit"
                 className="btn btn-primary btn-lg"
                 style={{ width: '100%', marginTop: '0.75rem' }}
-                disabled={submitting}
+                disabled={submitting || !customerName.trim() || !note.trim()}
               >
                 {submitting ? 'Printing Ticket...' : '🎟️ Take Ticket'}
               </button>

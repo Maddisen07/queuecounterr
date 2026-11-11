@@ -18,15 +18,15 @@ const tokenSchema = new mongoose.Schema(
     },
     customerName: {
       type: String,
+      required: [true, 'Customer name is required'],
       trim: true,
-      maxlength: [60, 'Customer name cannot exceed 60 characters'],
-      default: ''
+      maxlength: [60, 'Customer name cannot exceed 60 characters']
     },
     note: {
       type: String,
+      required: [true, 'Service reason is required'],
       trim: true,
-      maxlength: [120, 'Note cannot exceed 120 characters'],
-      default: ''
+      maxlength: [120, 'Note cannot exceed 120 characters']
     },
     status: {
       type: String,

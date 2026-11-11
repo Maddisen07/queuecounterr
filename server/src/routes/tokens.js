@@ -17,10 +17,17 @@ router.post(
   asyncHandler(async (req, res) => {
     const { customerName, note } = req.body || {};
 
-    if (customerName && typeof customerName === 'string' && customerName.trim().length > 60) {
+    if (!customerName || typeof customerName !== 'string' || !customerName.trim()) {
+      throw new AppError('Customer name is required', 400);
+    }
+    if (customerName.trim().length > 60) {
       throw new AppError('Customer name cannot exceed 60 characters', 400);
     }
-    if (note && typeof note === 'string' && note.trim().length > 120) {
+
+    if (!note || typeof note !== 'string' || !note.trim()) {
+      throw new AppError('Service reason is required', 400);
+    }
+    if (note.trim().length > 120) {
       throw new AppError('Note cannot exceed 120 characters', 400);
     }
 

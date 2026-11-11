@@ -89,6 +89,13 @@ export async function issueToken({ customerName = '', note = '' }) {
   const trimmedName = typeof customerName === 'string' ? customerName.trim().slice(0, 60) : '';
   const trimmedNote = typeof note === 'string' ? note.trim().slice(0, 120) : '';
 
+  if (!trimmedName) {
+    throw new AppError('Customer name is required', 400);
+  }
+  if (!trimmedNote) {
+    throw new AppError('Service reason is required', 400);
+  }
+
   const day = getTodayString();
 
   // Atomically increment daily sequence

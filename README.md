@@ -137,8 +137,8 @@ npm test
 | `label` | String | Formatted ticket label (e.g. `Q-001`, `Q-007`). |
 | `number` | Number | Sequential integer (1, 2, 3...) resetting daily. |
 | `day` | String | Date string (`YYYY-MM-DD`). |
-| `customerName` | String | Optional, trimmed, max 60 characters. |
-| `note` | String | Optional, trimmed, max 120 characters. |
+| `customerName` | String | Required, trimmed, max 60 characters. |
+| `note` | String | Required service reason, trimmed, max 120 characters. |
 | `status` | String | Enum: `waiting`, `serving`, `completed`, `cancelled`, `no_show`. Default: `waiting`. |
 | `counter` | ObjectId (Ref: Counter) | Reference to the counter serving this token (null if waiting). |
 | `calledAt` | Date | Timestamp when customer was called to a counter. |
