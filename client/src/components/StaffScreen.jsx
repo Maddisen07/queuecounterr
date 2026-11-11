@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../api.js';
 import { usePolling, formatWaitTime, formatElapsedTime } from '../hooks.js';
+import { playChime } from '../utils/sound.js';
 import { Alert } from './Alert.jsx';
 
 export function StaffScreen() {
@@ -17,7 +18,10 @@ export function StaffScreen() {
   const [editingCounterId, setEditingCounterId] = useState(null);
   const [editingName, setEditingName] = useState('');
 
-  // Ticker for serving elapsed time
+  // Waiting list search filter
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Live seconds ticker for serving timers
   const [, setTicker] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setTicker((t) => t + 1), 1000);
@@ -34,7 +38,6 @@ export function StaffScreen() {
     }
   }, []);
 
-  // Polling every 3.5s
   usePolling(fetchQueue, 3500, true);
 
   useEffect(() => {
@@ -53,6 +56,11 @@ export function StaffScreen() {
     try {
       const result = await api.callNext(counterId);
       setSuccessMsg(`Called ${result.token?.label} to ${counterName}`);
+      try {
+        if (localStorage.getItem('queuecounter_sound') !== 'false') {
+          playChime();
+        }
+      } catch {}
       await fetchQueue();
     } catch (err) {
       setError(err.message);
@@ -165,7 +173,18 @@ export function StaffScreen() {
   const counters = queueData?.counters || [];
   const waitingList = queueData?.waiting || [];
   const openCounters = counters.filter((c) => c.isActive);
-  const avgDuration = queueData?.averageServiceTimeSec;
+  const avgDuration = queueData?.averageServiceTimeSec || 300;
+
+  // Filter waiting list by search term
+  const filteredWaiting = waitingList.filter((item) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      item.label.toLowerCase().includes(q) ||
+      (item.customerName && item.customerName.toLowerCase().includes(q)) ||
+      (item.note && item.note.toLowerCase().includes(q))
+    );
+  });
 
   return (
     <div className="staff-container">
@@ -185,45 +204,77 @@ export function StaffScreen() {
         />
       )}
 
-      {/* Stats Row */}
+      {/* Upgraded Stats Metric Cards */}
       <div className="queue-summary-banner">
-        <div className="summary-stat">
-          <span className="stat-label">Waiting in Queue</span>
-          <span className="stat-value">{waitingList.length}</span>
+        <div className="summary-stat-card card-accent-yellow">
+          <div className="stat-header">
+            <span className="stat-title">Waiting In Queue</span>
+            <span className="stat-icon" aria-hidden="true">⏳</span>
+          </div>
+          <div className="stat-value num-tabular">{waitingList.length}</div>
+          <div className="stat-subtext">Pending customers</div>
         </div>
-        <div className="summary-stat">
-          <span className="stat-label">Open Counters</span>
-          <span className="stat-value">
-            {openCounters.length} / {counters.length}
-          </span>
+
+        <div className="summary-stat-card card-accent-teal">
+          <div className="stat-header">
+            <span className="stat-title">Active Desks</span>
+            <span className="stat-icon" aria-hidden="true">🏢</span>
+          </div>
+          <div className="stat-value num-tabular">
+            {openCounters.length} <span style={{ fontSize: '1.25rem', color: 'var(--gray-400)' }}>/ {counters.length}</span>
+          </div>
+          <div className="stat-subtext">Open service counters</div>
         </div>
-        <div className="summary-stat">
-          <span className="stat-label">Average Service Time</span>
-          <span className="stat-value">
-            {avgDuration ? formatWaitTime(avgDuration, { precise: true }) : '5m'}
-          </span>
+
+        <div className="summary-stat-card card-accent-navy">
+          <div className="stat-header">
+            <span className="stat-title">Avg Service Duration</span>
+            <span className="stat-icon" aria-hidden="true">⏱️</span>
+          </div>
+          <div className="stat-value" style={{ fontSize: '2.4rem' }}>
+            {formatWaitTime(avgDuration, { precise: true })}
+          </div>
+          <div className="stat-subtext">Mean of last 20 completed</div>
         </div>
-        <div className="summary-stat">
-          <span className="stat-label">Next Arrival Est. Wait</span>
-          <span className="stat-value">
+
+        <div className="summary-stat-card card-accent-amber">
+          <div className="stat-header">
+            <span className="stat-title">Arrival Wait Estimate</span>
+            <span className="stat-icon" aria-hidden="true">🚀</span>
+          </div>
+          <div className="stat-value" style={{ fontSize: '2.4rem' }}>
             {openCounters.length === 0
-              ? 'None (Closed)'
+              ? 'Closed'
               : formatWaitTime(queueData?.estimatedWaitSecForNewArrival)}
-          </span>
+          </div>
+          <div className="stat-subtext">For new incoming customer</div>
         </div>
       </div>
 
       {/* Counters Section */}
-      <section aria-labelledby="counters-heading">
-        <h2 id="counters-heading" className="form-title" style={{ fontSize: '1.75rem', marginBottom: '1rem' }}>
-          Service Counters
-        </h2>
+      <section aria-labelledby="counters-management-heading">
+        <div className="staff-section-header">
+          <div>
+            <h2 id="counters-management-heading" className="form-title" style={{ fontSize: '1.85rem' }}>
+              Service Counters
+            </h2>
+            <p style={{ color: 'var(--gray-500)', fontSize: '0.9rem' }}>
+              Dispatch customers, monitor serving times, and configure counter status.
+            </p>
+          </div>
+        </div>
 
         <div className="counters-grid">
           {counters.map((counter) => {
             const isServing = !!counter.currentToken;
             const currentToken = counter.currentToken;
             const isEditing = editingCounterId === counter._id;
+
+            // Check if serving time has overrun average
+            const elapsedServingSec = currentToken?.calledAt
+              ? Math.floor((Date.now() - new Date(currentToken.calledAt).getTime()) / 1000)
+              : 0;
+            const isOverrun = isServing && elapsedServingSec > avgDuration;
 
             return (
               <div
@@ -232,10 +283,10 @@ export function StaffScreen() {
                   !counter.isActive ? 'is-closed' : ''
                 }`}
               >
-                {/* Header: Name and Status */}
+                {/* Header: Name and Status Badge */}
                 <div className="counter-card-header">
                   {isEditing ? (
-                    <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+                    <div style={{ display: 'flex', gap: '0.4rem', width: '100%' }}>
                       <input
                         type="text"
                         className="form-input"
@@ -261,12 +312,12 @@ export function StaffScreen() {
                     </div>
                   ) : (
                     <>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div className="counter-name-group">
                         <span className="counter-name-title">{counter.name}</span>
                         <button
                           type="button"
                           className="btn btn-outline btn-sm"
-                          style={{ padding: '0.15rem 0.4rem', fontSize: '0.75rem' }}
+                          style={{ padding: '0.15rem 0.45rem', fontSize: '0.75rem' }}
                           title="Rename Counter"
                           onClick={() => {
                             setEditingCounterId(counter._id);
@@ -276,9 +327,10 @@ export function StaffScreen() {
                           ✎
                         </button>
                       </div>
+
                       <span
-                        className={`counter-badge ${
-                          counter.isActive ? 'badge-open' : 'badge-closed'
+                        className={`counter-status-pill ${
+                          counter.isActive ? 'status-pill-open' : 'status-pill-closed'
                         }`}
                       >
                         {counter.isActive ? 'Open' : 'Closed'}
@@ -289,31 +341,48 @@ export function StaffScreen() {
 
                 {/* Body: Serving Token or Idle */}
                 {isServing && currentToken ? (
-                  <div className="counter-serving-box">
-                    <div className="serving-token-label">{currentToken.label}</div>
+                  <div className="counter-serving-stage">
+                    <div className="serving-stage-token num-tabular">
+                      {currentToken.label}
+                    </div>
                     {currentToken.customerName && (
-                      <div className="serving-customer-name">
-                        {currentToken.customerName}
+                      <div className="serving-stage-name">
+                        👤 {currentToken.customerName}
                       </div>
                     )}
                     {currentToken.note && (
-                      <div style={{ fontSize: '0.8rem', color: 'var(--gray-500)', fontStyle: 'italic' }}>
+                      <div className="serving-stage-note">
                         "{currentToken.note}"
                       </div>
                     )}
-                    <div className="serving-elapsed-timer">
-                      ⏱ Serving for: {formatElapsedTime(currentToken.calledAt)}
+
+                    <div>
+                      <span
+                        className={`serving-timer-pill num-tabular ${
+                          isOverrun ? 'timer-overrun' : ''
+                        }`}
+                        title={isOverrun ? 'Serving time is exceeding average' : 'Elapsed time'}
+                      >
+                        ⏱ Serving: {formatElapsedTime(currentToken.calledAt)}
+                        {isOverrun && ' (overrunning)'}
+                      </span>
                     </div>
                   </div>
                 ) : (
-                  <div className="counter-idle-box">
-                    {counter.isActive ? 'Idle — Ready for customer' : 'Counter is closed'}
+                  <div className="counter-idle-stage">
+                    <span>{counter.isActive ? 'Ready for Customer' : 'Counter Inactive'}</span>
+                    <small>
+                      {counter.isActive
+                        ? waitingList.length > 0
+                          ? 'Click "Call Next" below to serve'
+                          : 'Queue is currently empty'
+                        : 'Open counter to begin serving'}
+                    </small>
                   </div>
                 )}
 
-                {/* Actions */}
+                {/* Card Action Buttons */}
                 <div className="counter-card-actions">
-                  {/* Call Next Button */}
                   <button
                     type="button"
                     className="btn btn-teal btn-lg"
@@ -326,11 +395,10 @@ export function StaffScreen() {
                     }
                     onClick={() => handleCallNext(counter._id, counter.name)}
                   >
-                    📢 Call Next
+                    📢 Call Next Customer
                   </button>
 
-                  {/* Complete & No-Show Buttons */}
-                  <div className="counter-action-row">
+                  <div className="actions-row">
                     <button
                       type="button"
                       className="btn btn-primary"
@@ -349,8 +417,7 @@ export function StaffScreen() {
                     </button>
                   </div>
 
-                  {/* Open/Close & Delete Row */}
-                  <div className="counter-action-row" style={{ marginTop: '0.25rem' }}>
+                  <div className="actions-row" style={{ marginTop: '0.2rem' }}>
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
@@ -376,13 +443,16 @@ export function StaffScreen() {
           })}
 
           {/* Add Counter Card */}
-          <div className="add-counter-card">
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>Add New Counter</h3>
-            <form onSubmit={handleAddCounter} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div className="add-counter-box">
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>+ Add New Counter</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
+              Open another service desk for peak traffic hours.
+            </p>
+            <form onSubmit={handleAddCounter} style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g. Counter 2"
+                placeholder="e.g. Counter 2 or Desk B"
                 maxLength={40}
                 value={newCounterName}
                 onChange={(e) => setNewCounterName(e.target.value)}
@@ -394,7 +464,7 @@ export function StaffScreen() {
                 className="btn btn-navy"
                 disabled={addingCounter || !newCounterName.trim()}
               >
-                {addingCounter ? 'Adding...' : '+ Add Counter'}
+                {addingCounter ? 'Adding...' : 'Create Counter'}
               </button>
             </form>
           </div>
@@ -402,51 +472,94 @@ export function StaffScreen() {
       </section>
 
       {/* Waiting List Table */}
-      <section aria-labelledby="waiting-list-heading">
-        <h2 id="waiting-list-heading" className="form-title" style={{ fontSize: '1.75rem', marginBottom: '1rem' }}>
-          Waiting List ({waitingList.length})
-        </h2>
+      <section aria-labelledby="waiting-table-heading" style={{ marginTop: '1rem' }}>
+        <div className="staff-section-header">
+          <div>
+            <h2 id="waiting-table-heading" className="form-title" style={{ fontSize: '1.85rem' }}>
+              Waiting List ({waitingList.length})
+            </h2>
+            <p style={{ color: 'var(--gray-500)', fontSize: '0.9rem' }}>
+              Live customer queue in order of token issuance.
+            </p>
+          </div>
+
+          {/* Search Box */}
+          {waitingList.length > 0 && (
+            <div style={{ maxWidth: '280px', width: '100%' }}>
+              <input
+                type="search"
+                className="form-input"
+                placeholder="Filter by token or name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ padding: '0.45rem 0.85rem', fontSize: '0.875rem' }}
+              />
+            </div>
+          )}
+        </div>
 
         {waitingList.length === 0 ? (
-          <div className="counter-idle-box" style={{ background: '#ffffff', border: '1px solid var(--gray-200)' }}>
-            No customers currently waiting in the queue.
+          <div className="counter-idle-stage" style={{ background: '#ffffff', padding: '3rem 1rem' }}>
+            <span style={{ fontSize: '1.25rem' }}>No customers currently waiting</span>
+            <small>New arrivals will appear here immediately.</small>
+          </div>
+        ) : filteredWaiting.length === 0 ? (
+          <div className="counter-idle-stage" style={{ background: '#ffffff', padding: '2rem 1rem' }}>
+            <span>No tokens match "{searchQuery}"</span>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => setSearchQuery('')}
+              style={{ marginTop: '0.5rem' }}
+            >
+              Clear Search
+            </button>
           </div>
         ) : (
           <div className="table-wrapper">
             <table className="queue-table">
               <thead>
                 <tr>
-                  <th>Pos</th>
+                  <th style={{ width: '60px' }}>Pos</th>
                   <th>Token</th>
                   <th>Customer Name</th>
-                  <th>Note</th>
+                  <th>Note / Reason</th>
                   <th>Waiting For</th>
-                  <th>Estimated Wait</th>
+                  <th>Est. Wait</th>
                 </tr>
               </thead>
               <tbody>
-                {waitingList.map((token) => (
-                  <tr key={token._id}>
-                    <td style={{ fontWeight: 700, color: 'var(--gray-500)' }}>
-                      #{token.position}
-                    </td>
-                    <td>
-                      <span className="table-token-pill">{token.label}</span>
-                    </td>
-                    <td style={{ fontWeight: 600 }}>
-                      {token.customerName || '—'}
-                    </td>
-                    <td style={{ color: 'var(--gray-500)', fontSize: '0.85rem' }}>
-                      {token.note || '—'}
-                    </td>
-                    <td>{formatElapsedTime(token.createdAt)}</td>
-                    <td style={{ fontWeight: 600 }}>
-                      {openCounters.length === 0
-                        ? 'Counters closed'
-                        : formatWaitTime(token.estimatedWaitSec)}
-                    </td>
-                  </tr>
-                ))}
+                {filteredWaiting.map((token) => {
+                  const posClass = token.position <= 3 ? `pos-${token.position}` : '';
+                  return (
+                    <tr key={token._id}>
+                      <td>
+                        <span className={`table-pos-badge ${posClass}`}>
+                          {token.position}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="table-token-badge num-tabular">
+                          {token.label}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 700 }}>
+                        {token.customerName || <span style={{ color: 'var(--gray-400)' }}>Walk-in</span>}
+                      </td>
+                      <td style={{ color: 'var(--gray-600)', fontSize: '0.9rem' }}>
+                        {token.note || '—'}
+                      </td>
+                      <td className="num-tabular" style={{ color: 'var(--gray-600)' }}>
+                        ⏱ {formatElapsedTime(token.createdAt)}
+                      </td>
+                      <td style={{ fontWeight: 700 }}>
+                        {openCounters.length === 0
+                          ? <span style={{ color: 'var(--gray-500)' }}>Counters closed</span>
+                          : formatWaitTime(token.estimatedWaitSec)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

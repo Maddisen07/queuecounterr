@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { formatWaitTime } from '../hooks.js';
+import { playChime } from '../utils/sound.js';
 
 export function TicketCard({
   tokenData,
@@ -16,73 +17,135 @@ export function TicketCard({
   const isCancelled = token.status === 'cancelled';
   const isNoShow = token.status === 'no_show';
 
-  // Ahead of you count
-  const aheadOfYou = typeof position === 'number' && position > 0 ? position - 1 : 0;
+  // Play audio chime if status just changed to 'serving'
+  const prevStatusRef = useRef(token.status);
+  useEffect(() => {
+    if (prevStatusRef.current !== 'serving' && token.status === 'serving') {
+      try {
+        if (localStorage.getItem('queuecounter_sound') !== 'false') {
+          playChime();
+        }
+      } catch {}
+    }
+    prevStatusRef.current = token.status;
+  }, [token.status]);
 
-  // Counter name when serving
+  const aheadOfYou = typeof position === 'number' && position > 0 ? position - 1 : 0;
   const counterName = token.counter?.name || 'Counter';
+
+  // Stepper state calculation
+  const getStepState = () => {
+    if (isWaiting) return 1; // Waiting
+    if (isServing) return 2; // Serving
+    if (isCompleted || isCancelled || isNoShow) return 3; // Done
+    return 0;
+  };
+  const stepIndex = getStepState();
 
   return (
     <div className="ticket-wrapper" aria-live="polite">
-      <div className="ticket-card">
+      <div className="ticket-container">
         {/* Ticket Top Half */}
         <div className="ticket-top">
-          <div className="ticket-header-pill">Queue Ticket • {token.day}</div>
-          <div className="ticket-label" aria-label={`Token number ${token.label}`}>
+          <div className="ticket-agency-badge">
+            <span>Official Queue Ticket</span>
+            <span>•</span>
+            <span>{token.day}</span>
+          </div>
+
+          <div
+            className="ticket-giant-label num-tabular"
+            aria-label={`Token number ${token.label}`}
+          >
             {token.label}
           </div>
 
           {token.customerName && (
-            <div className="ticket-customer">{token.customerName}</div>
+            <div className="ticket-customer-badge">
+              <span>👤</span>
+              <span>{token.customerName}</span>
+            </div>
           )}
 
-          {token.note && <div className="ticket-note">"{token.note}"</div>}
+          {token.note && (
+            <div className="ticket-note-quote">
+              "{token.note}"
+            </div>
+          )}
         </div>
 
-        {/* Perforated Divider with Side Notches */}
-        <div className="ticket-divider-zone" aria-hidden="true">
-          <div className="ticket-notch ticket-notch-left"></div>
-          <div className="ticket-dashed-line"></div>
-          <div className="ticket-notch ticket-notch-right"></div>
+        {/* Signature Perforated Tear Line with Semicircular Notches */}
+        <div className="ticket-divider-container" aria-hidden="true">
+          <div className="ticket-notch-circle notch-left"></div>
+          <div className="ticket-perforated-line"></div>
+          <div className="ticket-notch-circle notch-right"></div>
         </div>
 
         {/* Ticket Bottom Half */}
         <div className="ticket-bottom">
-          {/* Status Badge */}
-          <div className={`ticket-status-pill status-${token.status}`}>
-            {isWaiting && '⏳ In Queue'}
-            {isServing && '📢 Now Serving'}
-            {isCompleted && '✔ Completed'}
-            {isCancelled && '✖ Cancelled'}
-            {isNoShow && '⚠️ Missed Call'}
+          {/* Visual Step Stepper */}
+          <div className="ticket-step-progress" aria-hidden="true">
+            <div className="step-progress-track">
+              <div
+                className="step-progress-fill"
+                style={{ width: `${(stepIndex / 3) * 100}%` }}
+              ></div>
+            </div>
+
+            <div className={`step-node ${stepIndex >= 0 ? (stepIndex === 0 ? 'is-active' : 'is-passed') : ''}`}>
+              <div className="step-circle">1</div>
+              <span className="step-title">Taken</span>
+            </div>
+            <div className={`step-node ${stepIndex >= 1 ? (stepIndex === 1 ? 'is-active' : 'is-passed') : ''}`}>
+              <div className="step-circle">2</div>
+              <span className="step-title">Waiting</span>
+            </div>
+            <div className={`step-node ${stepIndex >= 2 ? (stepIndex === 2 ? 'is-active' : 'is-passed') : ''}`}>
+              <div className="step-circle">3</div>
+              <span className="step-title">Serving</span>
+            </div>
+            <div className={`step-node ${stepIndex >= 3 ? 'is-active' : ''}`}>
+              <div className="step-circle">4</div>
+              <span className="step-title">Done</span>
+            </div>
           </div>
 
-          {/* Serving State Banner */}
+          {/* Rubber Stamp Status Badge */}
+          <div className={`stamp-badge stamp-${token.status}`}>
+            {isWaiting && '⏳ WAITING IN LINE'}
+            {isServing && '📢 NOW SERVING'}
+            {isCompleted && '✔ SERVICE COMPLETE'}
+            {isCancelled && '✖ TICKET CANCELLED'}
+            {isNoShow && '⚠️ MISSED CALL'}
+          </div>
+
+          {/* High-Impact Serving Alert Box */}
           {isServing && (
-            <div className="serving-callout">
-              <div className="serving-callout-title">Please Proceed To</div>
-              <div className="serving-callout-counter">{counterName}</div>
+            <div className="ticket-serving-hero">
+              <div className="serving-hero-eyebrow">Please Proceed Directly To</div>
+              <div className="serving-hero-counter">{counterName}</div>
+              <p className="serving-hero-tip">A staff member is ready to assist you right now.</p>
             </div>
           )}
 
-          {/* Waiting Metrics */}
+          {/* Waiting Metrics Grid */}
           {isWaiting && (
-            <div className="ticket-metrics">
-              <div className="ticket-metric-item">
-                <span className="metric-num">
-                  {aheadOfYou === 0 ? 'You are next!' : aheadOfYou}
+            <div className="ticket-metrics-grid">
+              <div className="metric-card-inner">
+                <span className="metric-big-num num-tabular">
+                  {aheadOfYou === 0 ? 'Next!' : aheadOfYou}
                 </span>
-                <span className="metric-text">
-                  {aheadOfYou === 0 ? 'Queue Position #1' : 'Ahead of You'}
+                <span className="metric-sub-label">
+                  {aheadOfYou === 0 ? 'Position #1' : 'Ahead of You'}
                 </span>
               </div>
-              <div className="ticket-metric-item">
-                <span className="metric-num">
+              <div className="metric-card-inner">
+                <span className="metric-big-num num-tabular">
                   {estimatedWaitSec !== null
                     ? formatWaitTime(estimatedWaitSec)
                     : 'Paused'}
                 </span>
-                <span className="metric-text">
+                <span className="metric-sub-label">
                   {estimatedWaitSec !== null
                     ? 'Estimated Wait'
                     : 'No Open Counters'}
@@ -91,34 +154,20 @@ export function TicketCard({
             </div>
           )}
 
-          {/* Completed State */}
+          {/* Completed State Summary */}
           {isCompleted && (
-            <div style={{ textAlign: 'center', color: 'var(--gray-700)', padding: '0.5rem 0' }}>
-              <strong>Service finished!</strong>
+            <div style={{ textAlign: 'center', padding: '0.25rem 0', color: 'var(--gray-700)' }}>
+              <strong>Thank you for your visit!</strong>
               {token.serviceDurationSec !== null && (
                 <div style={{ fontSize: '0.85rem', color: 'var(--gray-500)', marginTop: '0.25rem' }}>
-                  Duration: {formatWaitTime(token.serviceDurationSec, { precise: true })}
+                  Total service time: {formatWaitTime(token.serviceDurationSec, { precise: true })}
                 </div>
               )}
             </div>
           )}
 
-          {/* Cancelled State */}
-          {isCancelled && (
-            <div style={{ textAlign: 'center', color: 'var(--gray-500)', padding: '0.5rem 0' }}>
-              You left the queue.
-            </div>
-          )}
-
-          {/* No Show State */}
-          {isNoShow && (
-            <div style={{ textAlign: 'center', color: 'var(--gray-500)', padding: '0.5rem 0' }}>
-              You were called but were unavailable.
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="ticket-actions">
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
             {isWaiting && (
               <button
                 type="button"
@@ -126,7 +175,7 @@ export function TicketCard({
                 onClick={onCancel}
                 disabled={loadingAction}
               >
-                {loadingAction ? 'Leaving...' : 'Leave Queue'}
+                {loadingAction ? 'Cancelling...' : 'Leave Queue'}
               </button>
             )}
 
@@ -136,9 +185,15 @@ export function TicketCard({
                 className="btn btn-primary btn-lg"
                 onClick={onReset}
               >
-                Get a New Token
+                + Get Another Ticket
               </button>
             )}
+          </div>
+
+          {/* Barcode & Serial Footer */}
+          <div className="ticket-barcode-zone" aria-hidden="true">
+            <div className="barcode-strip"></div>
+            <div className="barcode-text">ID: {String(token._id).slice(-8).toUpperCase()}</div>
           </div>
         </div>
       </div>

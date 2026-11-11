@@ -4,6 +4,14 @@ import { useLocalStorage, usePolling, formatWaitTime } from '../hooks.js';
 import { TicketCard } from './TicketCard.jsx';
 import { Alert } from './Alert.jsx';
 
+const REASON_PRESETS = [
+  'General Inquiry',
+  'Document Pickup',
+  'Consultation',
+  'Payment / Billing',
+  'Account Support'
+];
+
 export function JoinScreen() {
   const [savedTokenId, setSavedTokenId] = useLocalStorage('queuecounter_token_id', null);
   const [tokenData, setTokenData] = useState(null);
@@ -27,7 +35,7 @@ export function JoinScreen() {
       setError(null);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
-        // As requested: clear from localStorage if server returns 404
+        // Clear from localStorage if server returns 404 as requested
         setSavedTokenId(null);
         setTokenData(null);
       } else {
@@ -45,16 +53,15 @@ export function JoinScreen() {
         estimatedArrivalWaitSec: data.estimatedWaitSecForNewArrival,
         openCounterCount: data.openCounterCount
       });
-    } catch (err) {
-      // Don't show critical error for background snapshot polling
+    } catch {
+      // Background poll failure is silent
     }
   }, []);
 
   // Poll every 3.5s
   usePolling(fetchTokenStatus, 3500, !!savedTokenId);
-  usePolling(fetchQueueSummary, 4000, true);
+  usePolling(fetchQueueSummary, 3500, true);
 
-  // Initial load
   useEffect(() => {
     fetchQueueSummary();
     if (savedTokenId) {
@@ -73,7 +80,6 @@ export function JoinScreen() {
         customerName: customerName.trim(),
         note: note.trim()
       });
-      // Store token ID in localStorage
       setSavedTokenId(result.token._id);
       setTokenData(result);
       setCustomerName('');
@@ -85,7 +91,7 @@ export function JoinScreen() {
     }
   };
 
-  // Handle Leaving the Queue
+  // Handle Leaving Queue
   const handleCancel = async () => {
     if (!savedTokenId) return;
     setError(null);
@@ -106,7 +112,7 @@ export function JoinScreen() {
     }
   };
 
-  // Reset to intake form (for completed, cancelled, or no-show tokens)
+  // Reset to form
   const handleReset = () => {
     setSavedTokenId(null);
     setTokenData(null);
@@ -123,45 +129,62 @@ export function JoinScreen() {
         />
       )}
 
-      {/* If the customer has an active or recent token, show Ticket Card */}
+      {/* If customer has an active token, render Ticket Card */}
       {savedTokenId && tokenData ? (
-        <div>
-          <TicketCard
-            tokenData={tokenData}
-            onCancel={handleCancel}
-            onReset={handleReset}
-            loadingAction={cancelling}
-          />
-        </div>
+        <TicketCard
+          tokenData={tokenData}
+          onCancel={handleCancel}
+          onReset={handleReset}
+          loadingAction={cancelling}
+        />
       ) : (
-        /* Otherwise, show Queue Summary & Intake Form */
+        /* Otherwise render live queue banner + intake form */
         <div>
-          {/* Queue Snapshot Indicator */}
+          {/* Live Metric Cards Banner */}
           {queueSummary && (
             <div className="queue-summary-banner">
-              <div className="summary-stat">
-                <span className="stat-label">Currently Waiting</span>
-                <span className="stat-value">{queueSummary.waitingCount}</span>
+              <div className="summary-stat-card card-accent-yellow">
+                <div className="stat-header">
+                  <span className="stat-title">In Line Now</span>
+                  <span className="stat-icon" aria-hidden="true">👥</span>
+                </div>
+                <div className="stat-value num-tabular">{queueSummary.waitingCount}</div>
+                <div className="stat-subtext">Customers waiting</div>
               </div>
-              <div className="summary-stat">
-                <span className="stat-label">Open Counters</span>
-                <span className="stat-value">{queueSummary.openCounterCount}</span>
+
+              <div className="summary-stat-card card-accent-teal">
+                <div className="stat-header">
+                  <span className="stat-title">Open Counters</span>
+                  <span className="stat-icon" aria-hidden="true">🏢</span>
+                </div>
+                <div className="stat-value num-tabular">{queueSummary.openCounterCount}</div>
+                <div className="stat-subtext">Active service desks</div>
               </div>
-              <div className="summary-stat">
-                <span className="stat-label">Est. Wait if Joining Now</span>
-                <span className="stat-value">
+
+              <div className="summary-stat-card card-accent-navy">
+                <div className="stat-header">
+                  <span className="stat-title">Est. Wait if Joining</span>
+                  <span className="stat-icon" aria-hidden="true">⏱️</span>
+                </div>
+                <div className="stat-value" style={{ fontSize: '2.2rem' }}>
                   {queueSummary.openCounterCount === 0
-                    ? 'Counters Closed'
+                    ? 'Closed'
                     : formatWaitTime(queueSummary.estimatedArrivalWaitSec)}
-                </span>
+                </div>
+                <div className="stat-subtext">
+                  {queueSummary.openCounterCount === 0
+                    ? 'Counters paused'
+                    : 'Approximate wait time'}
+                </div>
               </div>
             </div>
           )}
 
+          {/* Customer Intake Form Card */}
           <div className="form-card">
-            <h1 className="form-title">Take a Token</h1>
+            <h1 className="form-title">Take a Ticket</h1>
             <p className="form-subtitle">
-              Join the walk-in queue. We will notify you when a counter calls your number.
+              Take your walk-in token. Watch your phone or the waiting-room display board for your number.
             </p>
 
             <form onSubmit={handleJoin} noValidate>
@@ -174,24 +197,46 @@ export function JoinScreen() {
                   id="customerName"
                   type="text"
                   className="form-input"
-                  placeholder="e.g. Alex"
+                  placeholder="e.g. Jordan Smith"
                   value={customerName}
                   maxLength={60}
                   onChange={(e) => setCustomerName(e.target.value)}
                   disabled={submitting}
+                  autoComplete="name"
                 />
+              </div>
+
+              {/* Quick Reason Chips */}
+              <div>
+                <span className="quick-reasons-label">Quick Select Reason:</span>
+                <div className="quick-reasons-chips">
+                  {REASON_PRESETS.map((preset) => {
+                    const isSelected = note === preset;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        className={`chip-btn ${isSelected ? 'is-selected' : ''}`}
+                        onClick={() => setNote(isSelected ? '' : preset)}
+                        disabled={submitting}
+                      >
+                        {preset}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="form-group">
                 <label htmlFor="note" className="form-label">
-                  <span>Service Reason / Note (optional)</span>
+                  <span>Custom Service Note (optional)</span>
                   <span className="form-char-count">{note.length}/120</span>
                 </label>
                 <textarea
                   id="note"
                   rows={2}
                   className="form-textarea"
-                  placeholder="e.g. Account query or document pickup"
+                  placeholder="e.g. Need help with address change or license renewal"
                   value={note}
                   maxLength={120}
                   onChange={(e) => setNote(e.target.value)}
@@ -202,10 +247,10 @@ export function JoinScreen() {
               <button
                 type="submit"
                 className="btn btn-primary btn-lg"
-                style={{ width: '100%', marginTop: '0.5rem' }}
+                style={{ width: '100%', marginTop: '0.75rem' }}
                 disabled={submitting}
               >
-                {submitting ? 'Generating Token...' : 'Get Ticket'}
+                {submitting ? 'Printing Ticket...' : '🎟️ Take Ticket'}
               </button>
             </form>
           </div>
