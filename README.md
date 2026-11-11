@@ -129,6 +129,45 @@ npm test
 
 ---
 
+## ⚡ Deploying to Vercel (Connected to GitHub)
+
+QueueCounter is pre-configured for **one-click deployment to Vercel** using the root `vercel.json` and serverless entrypoint in `api/index.js`.
+
+### Step 1: Push Code to your GitHub Repository
+If you haven't pushed yet:
+```bash
+git remote add origin https://github.com/<your-username>/<your-repo-name>.git
+git branch -M main
+git push -u origin main
+```
+
+### Step 2: Import into Vercel
+1. Log into your [Vercel Dashboard](https://vercel.com/dashboard).
+2. Click **Add New...** -> **Project**.
+3. Locate your GitHub repository and click **Import**.
+
+### Step 3: Configure Environment Variables in Vercel
+Under the **Environment Variables** section in the project setup:
+- **Key**: `MONGODB_URI`
+- **Value**: Your full MongoDB Atlas connection string:
+  ```text
+  mongodb+srv://<username>:<password>@cluster0.abcde.mongodb.net/queuecounter?retryWrites=true&w=majority
+  ```
+
+### Step 4: Verify MongoDB Atlas Network Access
+> [!IMPORTANT]
+> Because Vercel serverless functions run across dynamic IP ranges, ensure your MongoDB Atlas cluster allows incoming connections:
+> 1. In **MongoDB Atlas**, go to **Network Access**.
+> 2. Confirm that `0.0.0.0/0` (Allow Access from Anywhere) is active.
+
+### Step 5: Click Deploy!
+- Vercel will automatically run the build via `vercel.json`.
+- The Vite frontend is served through Vercel's global CDN (`client/dist`).
+- The Express API is automatically served as a serverless function at `/api/*` via `api/index.js`.
+- Any subsequent git push to `main` will trigger automatic continuous deployments.
+
+---
+
 ## 📐 Data Models
 
 ### 1. Token (`Token.js`)
